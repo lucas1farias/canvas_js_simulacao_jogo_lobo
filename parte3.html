@@ -1,0 +1,241 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+</head>
+<body>
+  <script>
+
+    function animate() {
+      ctx.fillStyle = '#222'
+      ctx.fillRect(0, 0, innerWidth, innerHeight)
+
+      // #C & #D & #E: [movimento horizontal++, movimento vertical++, whereX=]
+      player.horizontalOffset()
+      player.verticalOffset()
+      player.pressedRightOrLeft(5)
+
+      let test = `
+        #H: Teste p/ descobrir (tentativa e erro) o ajuste certo de cada imagem em seus sprites
+        let testSprite = new Image()
+        testSprite.src = './assets/players/teste.png'
+        let width = [0, 172, 367, 572]
+        let widthDistance = [171, 193, 204, 207]
+        ctx.drawImage(testSprite, width[3], 0, widthDistance[3], 175, 400, 100, 300, 300)
+      `
+      
+      requestAnimationFrame(animate)
+    }
+
+    // Detectar teclas pressionadas p/ definir o grupo de sprites a ser carregado
+    addEventListener('keydown', ({ key }) => {
+      switch (key) {
+        case 'w':
+          // #G
+          player.keys.w.pressed = true
+          player.loadSprite({action: 'jump'}) 
+          
+          // #F: O salto se torna mais realista se colocado aqui, ao invés de estar na função "animate"
+          player.pressedUpOrDown(20)
+          break
+        
+        case 'a':
+          // #G
+          player.keys.a.pressed = true
+          player.loadSprite({action: 'walk_left'})
+          break
+
+        case 'd':
+          // #G
+          player.keys.d.pressed = true
+          player.loadSprite({action: 'walk_right'})
+          break
+      }
+    })
+    
+    // Detectar teclas soltas p/ definir o grupo de sprites a ser carregado
+    addEventListener('keyup', ({ key }) => {
+      switch (key) {
+        case 'w':
+          player.keys.w.pressed = false
+          break
+
+        case 'a':
+          // #G
+          player.keys.a.pressed = false
+          player.loadSprite({action: 'idle_left'})
+          break
+
+        case 'd':
+          // #G
+          player.keys.d.pressed = false
+          player.loadSprite({action: 'idle_right'})
+          break
+      }
+    })
+
+    class Player {
+      constructor() {
+        // #G: Configuração de cada grupo de sprite do jogador
+        this.wolfSetup = {
+          
+          idleRight: {
+            widthList: [0, 184, 365, 542, 715, 892, 1074],
+            widthList2: [183, 183, 177, 171, 174, 180, 185],
+            srcHeight: 175,
+            frameAmount: 6
+          },
+
+          idleLeft: {
+            widthList: [0, 185, 367, 544, 717, 894, 1074],
+            widthList2: [187, 183, 177, 173, 177, 181, 185],
+            srcHeight: 175,
+            frameAmount: 6
+          },
+
+          walkRight: {
+            widthList: [0, 172, 350, 510, 685, 860, 1033, 1205.7, 1380],
+            widthList2: [171, 169, 160, 175, 175, 175, 175, 175, 175],
+            srcHeight: 161,
+            frameAmount: 8
+          },
+
+          // INVERTER O SPRITE DA DIREITA NO PAINT + INVERTER A ORDEM DOS FRAMES (CORRIGIR MOVIMENTO INVERSO)
+          walkLeft: {
+            // widthList: [0, 172, 344, 515, 690, 865, 1037, 1208, 1380],
+            widthList: [1380, 1208, 1037, 865, 690, 515, 344, 172, 0],
+            // widthList2: [171, 169, 174, 175, 175, 175, 172, 172, 172],
+            widthList2: [172, 172, 172, 175, 175, 175, 174, 169, 171],
+            srcHeight: 161,
+            frameAmount: 8
+          },
+
+          jumpRight: {
+            widthList: [0, 189, 378, 567, 755, 945, 1135],
+            widthList2: [189, 189, 189, 189, 189, 189, 189],
+            srcHeight: 188,
+            frameAmount: 6
+          },
+
+          jumpRightEdited: {
+            widthList: [0, 178, 355, 531, 709, 886, 1064, 1242],
+            widthList2: [178, 178, 178, 178, 178, 178, 178, 178],
+            srcHeight: 176,
+            frameAmount: 7
+          },
+
+          spin: {
+            widthList: [0, 191, 375, 563, 754, 940, 1126],
+            widthList2: [191, 186, 186, 186, 186, 186, 193],
+            srcHeight: 189,
+            frameAmount: 6
+          }
+      }
+
+        // #A: Controlador do x e y do jogador
+        this.speed = {x: 0, y: 0}
+
+        // #B: Controlador de teclas e de qual grupo de sprite é carregado (mudado nos EventListeners)
+        this.keys = {
+          a: { pressed: false },
+          d: { pressed: false },
+          space: { pressed: false },
+          w: { pressed: false },
+          s: { pressed: false },
+        }
+      }
+
+      // #C: Alteração de x do jogador
+      horizontalOffset() {
+        this.whereX += this.speed.x
+      }
+
+      // #D: Alteração de y do jogador
+      verticalOffset() {
+        this.whereY += this.speed.y
+      }
+
+      // #E: Movimento horizontal do jogador
+      pressedRightOrLeft(offsetHorizontal) {
+        if (this.keys.a.pressed) {
+          this.speed.x = -offsetHorizontal // ir <-
+        } else if (this.keys.d.pressed) {
+          this.speed.x = offsetHorizontal  // ir ->
+        } else {
+          this.speed.x = 0
+        }
+      }
+
+      // #F: Salto do jogador
+      pressedUpOrDown(offsetVertical) {
+        if (this.keys.w.pressed) {
+          this.speed.y = -offsetVertical // p/ cima
+        } else {
+          this.speed.y = 0
+        }
+      }
+    
+      // #G: Trocar o grupo de sprites
+      loadSprite({action}) {
+        if (action === 'jump') {
+          let wolfJump = new Image()
+          wolfJump.src = './assets/players/spin_rainbow_tr.png'
+          this.image = wolfJump
+          this.widthList = this.wolfSetup.spin.widthList
+          this.widthList2 = this.wolfSetup.spin.widthList2
+          this.srcHeight = this.wolfSetup.spin.srcHeight
+          this.frameAmount = this.wolfSetup.spin.frameAmount
+        } 
+        
+        else if (action === 'walk_right') {
+          let wolfWalkRight = new Image()
+          wolfWalkRight.src = './assets/players/wolf_walk_right_tr.png'
+          this.image = wolfWalkRight
+          this.widthList = this.wolfSetup.walkRight.widthList
+          this.widthList2 = this.wolfSetup.walkRight.widthList2
+          this.srcHeight = this.wolfSetup.walkRight.srcHeight
+          this.frameAmount = this.wolfSetup.walkRight.frameAmount
+        } 
+        
+        else if (action === 'walk_left') {
+          let wolfWalkLeft = new Image()
+          wolfWalkLeft.src = './assets/players/wolf_walk_left_tr.png'
+          this.image = wolfWalkLeft
+          this.widthList = this.wolfSetup.walkLeft.widthList
+          this.widthList2 = this.wolfSetup.walkLeft.widthList2
+          this.srcHeight = this.wolfSetup.walkLeft.srcHeight
+          this.frameAmount = this.wolfSetup.walkLeft.frameAmount
+        } 
+        
+        else if (action === 'idle_right') {
+          let wolf = new Image()
+          wolf.src = './assets/players/wolf_idle_right_tr.png'
+          this.image = wolf
+          this.widthList = this.wolfSetup.idleRight.widthList
+          this.widthList2 = this.wolfSetup.idleRight.widthList2
+          this.srcHeight = this.wolfSetup.idleRight.srcHeight
+          this.frameAmount = this.wolfSetup.idleRight.frameAmount
+        } 
+        
+        else if (action === 'idle_left') {
+          let wolfIdleLeft = new Image()
+          wolfIdleLeft.src = './assets/players/wolf_idle_left_tr.png'
+          this.image = wolfIdleLeft
+          this.widthList = this.wolfSetup.idleLeft.widthList
+          this.widthList2 = this.wolfSetup.idleLeft.widthList2
+          this.srcHeight = this.wolfSetup.idleLeft.srcHeight
+          this.frameAmount = this.wolfSetup.idleLeft.frameAmount
+        } 
+      }
+    }
+
+    animate()
+
+  </script>
+</body>
+</html>

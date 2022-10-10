@@ -1,0 +1,85 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+</head>
+<body>
+  <script>
+    // #C: Os cenários são configurados nesta função, passado ao array criado no item anterior
+    function landscapeSetup({contentBox}) {
+      let background = new Image()
+      background.src = './assets/landscapes/background.png'
+
+      let backgroundHills = new Image()
+      backgroundHills.src = './assets/landscapes/hills.png'
+      
+      let mainBackground = new Landscape(
+        {
+          image: background,
+          x: 0,
+          y: 0,
+          width: background.width,
+          height: background.height
+        })
+      contentBox.push(mainBackground)
+      
+      let hillsBackground = new Landscape(
+        {
+          image: backgroundHills,
+          x: 0,
+          y: 0,
+          width: backgroundHills.width,
+          height: backgroundHills.height
+        })
+      contentBox.push(hillsBackground)
+    }
+    
+    function canvasInsert({content, contentBox}) {
+      // #E: Função usada em "animate" p/ desenhar os cenários constantemente no canvas
+      if(content === 'landscape') {
+        contentBox.forEach(landscape => {
+          landscape.draw()
+        })
+      }
+    }
+
+    function init() {
+      // #D: Os cenários criados são chamados nesta função, p/ uso único (não deve ser usado na função "animate")
+      landscapeSetup({contentBox: landscapes})
+    }
+
+    function animate() {
+      // #F: Os cenários são desenhados constatemente no canvas
+      canvasInsert({content: 'landscape', contentBox: landscapes})
+      
+      requestAnimationFrame(animate)
+    }
+
+    // #A: Classe para carregar os recursos de imagem intangíveis do canvas (cenários de fundo)
+    class Landscape {
+      constructor({image, x, y, width, height}) {
+        this.image = image
+        this.x = x
+        this.y = y
+        this.width = width
+        this.height = height
+      }
+
+      draw() {
+        ctx.drawImage(this.image, this.x, this.y, this.width, this.height)  
+      }
+    } 
+  
+    // #B: Sendo dois cenários, eles são inseridos num array
+    let landscapes = [] 
+    
+    init()
+    animate()
+  </script>
+</body>
+</html>

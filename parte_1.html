@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+</head>
+<body>
+  <canvas></canvas>
+  <script>
+    // #A: Elemento do canvas e sua var de contexto
+    const canvas = document.querySelector('canvas')
+    const ctx = canvas.getContext('2d')
+    
+    // #B: Dimensões do canvas
+    canvas.width = 1200
+    canvas.height = 600
+
+    function animate() {
+      // #C: Configuração inicial (descartável) p/ preencher o canvas (normalmente substituída por imagens de fundo)
+      ctx.fillStyle = '#222'
+      ctx.fillRect(0, 0, innerWidth, innerHeight)
+      
+      requestAnimationFrame(animate)
+    }
+
+    animate()
+
+  </script>
+</body>
+</html>

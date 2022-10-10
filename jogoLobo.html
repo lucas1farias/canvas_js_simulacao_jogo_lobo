@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jogo Lobo</title>
+    <style>
+      body {
+        margin: 0;
+        background-color: #222;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+      canvas {
+        border: cyan solid 5px;
+      }
+    </style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-0evHe/X+R7YkIZDRvuzKMRqM+OrBnVFBL6DOitfPri4tjfHxaWutUpFmBp4vmVor" crossorigin="anonymous">
+  </head>
+  <body>
+    <canvas></canvas>
+    <p class="text-danger">Parágrafo</p>
+    <script>
+      // [AQUI 1] Impedir sair da tela para baixo
+      // Pular com efeito de gravidade [evento keydown w]
+      // [AQUI 2] Mover horizontalmente
+      // [AQUI 3] Colisão horizontal em relação a plataformas (pouso) (queda nas laterais)
+      // [AQUI 4] Ponto de congelamento do personagem na tela -> (e de movimentação do cenário)
+      // [AQUI 5] Ponto de congelamento do personagem na tela <- (e de movimentação do cenário)
+      // [AQUI 6] Ponto de acionamento do cenário para mover em direção oposta ao do personagem
+      // 54:35 até 56:20 -> Configuração de ponto de encerramento de um cenário (Fim de fase)
+      // Substituição das plataformas em retângulos por imagens
+      
+      const canvas = document.querySelector('canvas')
+      const ctx = canvas.getContext('2d')
+
+      canvas.width = 1200
+      canvas.height = 600
+
+      let lives = 3
+      let health = 100
+      let hit = 0
+
+      const keys = {
+        right: { pressed: false },
+        left: { pressed: false },
+        up: { pressed: false },
+        trigger: { pressed: false },
+        greetings: { pressed: false },
+        ouch: { enabled: false }
+      }
+
+      function integersBetween(min, max, float = false) {
+        if (float) {
+          return Math.random() * (max - min + 1) + min
+        }
+        return Math.floor(Math.random() * (max - min + 1) + min)
+      }
+      
+      class Landscape {
+        constructor({ image, x, y, width, height }) {
+          this.image = image
+          this.x = x
+          this.y = y
+          this.width = width
+          this.height = height
+        }
+
+        draw() {
+          ctx.drawImage(this.image, this.x, this.y, this.width, this.height)
+        }
+      }
+
+      class Platform {
+        constructor({ image, x, y, width, height }) {
+          this.image = image
+          this.x = x
+          this.y = y
+          this.width = width
+          this.height = height
+          this.newX = undefined
+          this.newY = undefined
+        }
+
+        draw() {
+          /* ctx.beginPath()
+                ctx.fillStyle = 'white'
+                ctx.fillRect(this.x, this.y, this.width, this.height)
+                ctx.fill() */
+          ctx.drawImage(this.image, this.x, this.y, this.width, this.height)
+        }
+
+        move() {
+          let delay = 0
+          let newDelay = Math.floor(Math.random() * (200 - 100) + 100)
+
+          // A cada 100 até 200 frames: mudar a posição em x e y
+          if (delay % newDelay === 0) {
+            this.newX = Math.random() * (canvas.width - this.width)
+            this.newY = Math.random() * (canvas.height - this.height)
+          }
+
+          let dx = this.x - this.newX
+          let dy = this.y - this.newY
+
+          // Mover de forma homogênia (a divisão torna a transição muito menos devagar)
+          this.x -= dx / (newDelay * 2)
+          this.y -= dy / (newDelay * 2)
+        }
+      }
+
+      class Player {
+        constructor({
+          image,
+          widthList,
+          frameCounter,
+          fixedHeight,
+          widthList2,
+          srcHeight,
+          whereX,
+          whereY,
+          canvasWidth,
+          canvasHeight,
+          modularCounter,
+          modular,
+          frameAmount
+        }) {
+          this.image = image
+          this.widthList = widthList
+          this.frameCounter = frameCounter
+          this.fixedHeight = fixedHeight
+          this.widthList2 = widthList2
+          this.srcHeight = srcHeight
+          this.whereX = whereX
+          this.whereY = whereY
+          this.canvasWidth = canvasWidth
+          this.canvasHeight = canvasHeight
+          this.modularCounter = modularCounter
+          this.modular = modular
+          this.frameAmount = frameAmount
+
+          this.vx = 0
+          this.vy = 1
+          // this.frameAmount = this.widthList.length - 1
+        }
+
+        gravity(byValue) {
+          // 19:05 [AQUI 1]
+          if (this.whereY + this.canvasHeight + this.vy <= canvas.height) {
+            this.vy += byValue
+          } else {
+            this.vy = 0
+          }
+        }
+        
+        // ecma
+        fallDown(byValue) {
+          if (this.whereY + this.canvasHeight + this.vy <= canvas.height) {
+            this.vy += byValue
+          }
+        }
+
+        fail() {
+          // 01:26:50
+          // Na presença de uma plataforma, "this.y" é sempre < que "canvas.height"
+          // Na ausência de uma plataforma, "this.y" pode ficar > que "canvas.height"
+          if (this.whereY > canvas.height) {
+            lives -= 1
+            health = 100
+            init()
+          }
+        }
+
+        horizontalSetup(speed) {
+          // 33:35 [AQUI 2] Jogador se mexe com base em "this.vx"
+          // 44:45 [AQUI 4] quanto maior o divisível, mais o jogador se apróximo da borda ->
+          // 45:25 [AQUI 5] quanto maior o divisível, mais o jogador se distancia da borda <-
+          if (keys.right.pressed && this.whereX < canvas.width / 1.4) {
+            this.vx = speed
+          } else if (keys.left.pressed && this.whereX > canvas.width / 4) {
+            this.vx = -speed
+          }
+          // GATILHO PARA MOVIMENTAÇÂO DE CENÁRIO
+          else {
+            this.vx = 0
+            keys.trigger.pressed = true
+            // Quando alcança o canto ->: condição 1 é falsa
+            // Quando alcança o canto <-: condição 2 é falsa
+            // console.log('1', this.x < canvas.width - this.width * 2)
+            // console.log('2', this.x > this.width)
+          }
+        }
+        
+        // tv
+        landscapeMotion(obstacle, byValue) {
+          // 46:10 [ AQUI 6 ] Personagem em movimento ou estático VS Cenário móvel em direção oposta
+          if (keys.trigger.pressed && keys.right.pressed) {
+            obstacle.forEach(index => {
+              index.x -= byValue
+            })
+            // obstacle.x -= byValue
+          } else if (keys.trigger.pressed && keys.left.pressed) {
+            obstacle.forEach(index => {
+              index.x += byValue
+            })
+            // obstacle.x += byValue
+          }
+        }
+
+        move() {
+          this.whereX += this.vx
+          this.whereY += this.vy
+        }
+        
+        collisionBottom(obstacle) {
+          obstacle.forEach(index => {
+            if (
+              this.whereY + this.canvasHeight <= index.y &&
+              this.whereY + this.canvasHeight + this.vy >= index.y &&
+              this.whereX + this.canvasWidth >= index.x &&
+              this.whereX <= index.x + index.width
+            ) {
+                this.vy = 0
+              }
+            })
+          }
+          
+          /*
+          // true = pulo do jogador alcança o topo de algum obstáculo
+          // true = pulo do jogador alcança o topo de algum obstáculo
+          // true = ponta -> do jogador toca ponta <- de algo
+          // true = ponta <- do jogador toca ponta -> de algo
+
+          // console.log(charWolf.whereY, charWolf.canvasHeight, platforms[1].y)
+          // console.log(charWolf.whereY + charWolf.canvasHeight <= pipes[0].y)
+
+          // console.log(charWolf.whereY, charWolf.canvasHeight, charWolf.vy, platforms[1].y)
+          // console.log(charWolf.whereY + charWolf.canvasHeight + charWolf.vy >= pipes[0].y)
+
+          // console.log(charWolf.whereX, charWolf.canvasWidth, platforms[1].x)
+          // console.log(charWolf.whereX + charWolf.canvasWidth >= platforms[1].x)
+
+          // console.log(charWolf.whereX <= platforms[1].x + platforms[1].width)
+          // console.log(charWolf.whereX <= platforms[1].x + platforms[1].width)
+          
+          // 39:15 até 43:20 [AQUI 3]
+          // Influencia o pouso
+          // Influencia o pouso
+          // Influencia a queda na horizontal <-
+          // Influencia a queda na horizontal ->
+          */
+            
+        // <test>
+        collisionBottomCustom(obstacle, xCustom = 0, yCustom = 0, width = 0) {
+          obstacle.forEach(index => {
+            if (
+              this.whereY + this.canvasHeight <= index.y - yCustom &&
+              this.whereY + this.canvasHeight + this.vy >= index.y - yCustom &&
+              this.whereX + this.canvasWidth >= index.x - xCustom &&
+              this.whereX <= index.x - xCustom + index.width - width
+            ) {
+              this.vy = 0
+            }
+          })
+        }
+
+        collisionHorizontal(obstacle, reboundBy) {
+          obstacle.forEach(index => {
+              if (
+                this.whereX + this.canvasWidth >= index.x &&
+                this.whereX <= index.x + index.width &&
+                this.whereY + this.canvasHeight >= index.y &&
+                this.whereY <= index.y + index.height
+              ) {
+                // console.log('Colisão')
+                keys.ouch.enabled = true
+                hit += 1
+
+                // Havendo colisão, o cenário precisa parar de mexer: "keys.trigger.pressed"
+                // Havendo colisão, o personagem precisa parar de mexer: "this.vx"
+                keys.trigger.pressed = false
+                if (keys.right.pressed) {
+                  this.vx -= reboundBy
+                } else if (keys.left.pressed) {
+                  this.vx += reboundBy
+                }
+              }
+            }
+          )
+        }
+          
+        /*
+        // true = ponta -> do jogador toca ponta <- de algo
+        // console.log(charWolf.whereX, charWolf.canvasWidth, platforms[1].x)
+        // console.log(charWolf.whereX + charWolf.canvasWidth >= platforms[1].x)
+
+        // true = ponta <- do jogador toca ponta -> de algo
+        // console.log(charWolf.whereX <= platforms[1].x + platforms[1].width)
+        // console.log(charWolf.whereX <= platforms[1].x + platforms[1].width)
+        */
+            
+        draw() {
+          ctx.drawImage(
+            this.image,
+            this.widthList[this.frameCounter],
+            this.fixedHeight,
+            this.widthList2[this.frameCounter],
+            this.srcHeight,
+            this.whereX,
+            this.whereY,
+            this.canvasWidth,
+            this.canvasHeight
+          )
+        }
+
+        frameAdmin() {
+          this.modularCounter++
+
+          if (this.modularCounter % this.modular === 0) {
+            if (this.frameCounter < this.frameAmount) {
+              this.frameCounter++
+            } else {
+              this.frameCounter = 0
+            }
+          }
+        }
+        
+        posture(image, reference, action) {
+          if (action === 'walk_right') {
+            this.image = image
+            this.widthList = reference.walkRight.widthList
+            this.widthList2 = reference.walkRight.widthList2
+            this.srcHeight = reference.walkRight.srcHeight
+            this.frameAmount = reference.walkRight.frameAmount
+          } else if (action === 'walk_left') {
+            this.image = image
+            this.widthList = reference.walkLeft.widthList
+            this.widthList2 = reference.walkLeft.widthList2
+            this.srcHeight = reference.walkLeft.srcHeight
+            this.frameAmount = reference.walkLeft.frameAmount
+          } else if (action === 'idle_right') {
+            this.image = image
+            this.widthList = reference.idleRight.widthList
+            this.widthList2 = reference.idleRight.widthList2
+            this.srcHeight = reference.idleRight.srcHeight
+            this.frameAmount = reference.idleRight.frameAmount
+          } else if (action === 'idle_left') {
+            this.image = image
+            this.widthList = reference.idleLeft.widthList
+            this.widthList2 = reference.idleLeft.widthList2
+            this.srcHeight = reference.idleLeft.srcHeight
+            this.frameAmount = reference.idleLeft.frameAmount
+          } else if (action === 'jump') {
+            this.image = image
+            this.widthList = reference.spin.widthList
+            this.widthList2 = reference.spin.widthList2
+            this.srcHeight = reference.spin.srcHeight
+            this.frameAmount = reference.spin.frameAmount
+          } else if (action === 'jump_right') {
+            this.image = image
+            this.widthList = reference.jumpRight.widthList
+            this.widthList2 = reference.jumpRight.widthList2
+            this.srcHeight = reference.jumpRight.srcHeight
+            this.frameAmount = reference.jumpRight.frameAmount
+          } else if (action === 'jump_right_edited') {
+            this.image = image
+            this.widthList = reference.jumpRightEdited.widthList
+            this.widthList2 = reference.jumpRightEdited.widthList2
+            this.srcHeight = reference.jumpRightEdited.srcHeight
+            this.frameAmount = reference.jumpRightEdited.frameAmount
+          }
+        }
+
+        say() {
+          if (keys.greetings.pressed) {
+            ctx.drawImage(greetings, this.whereX, this.whereY - 150, 251, 154)
+          }
+        }
+
+        hit() {
+          if (keys.ouch.enabled) {
+            ctx.drawImage(
+              ouch,
+              this.whereX,
+              this.whereY - integersBetween(40, 60),
+              100,
+              41
+            )
+            setTimeout(function () {
+              keys.ouch.enabled = false
+            }, 800)
+          } else {
+            ctx.drawImage(ouch, -10000, -10000, 100, 41)
+          }
+        }
+
+        verticalControl() {
+          let roofTop = 0
+          console.log(this.whereY)
+          if (this.whereY < roofTop) {
+            this.whereY -= this.whereY
+          }
+        }
+
+        findEdgeLeft(reference) {
+          // IMPEDIR JOGADOR DE DEIXAR A TELA <-
+          let screenEdgeLeft = reference.x
+          
+          if (
+            screenEdgeLeft > 0
+            // (screenEdgeLeft > 0 && keys.right.pressed === false) ||
+            // (screenEdgeLeft > 0 && keys.left.pressed === false)
+          ) {
+            return true
+          } else {
+            return false
+          }
+        } 
+      }
+
+      class Foe {
+        constructor({
+          image,
+          widthList,
+          frameCounter,
+          fixedHeight,
+          widthList2,
+          srcHeight,
+          x,
+          y,
+          width,
+          height,
+          modularCounter,
+          modular,
+          frameAmount
+        }) {
+          this.image = image
+          this.widthList = widthList
+          this.frameCounter = frameCounter
+          this.fixedHeight = fixedHeight
+          this.widthList2 = widthList2
+          this.srcHeight = srcHeight
+          this.x = x
+          this.y = y
+          this.width = width
+          this.height = height
+          this.modularCounter = modularCounter
+          this.modular = modular
+          this.frameAmount = frameAmount
+
+          this.vx = 0
+          this.vy = 0
+          // this.frameAmount = this.widthList.length - 1
+        }
+
+        gravity(byValue) {
+          // 19:05 [AQUI 1]
+          if (this.y + this.height + this.vy <= canvas.height) {
+            this.vy += byValue
+          } else {
+            this.vy = 0
+          }
+        }
+
+        fallDown(byValue) {
+          if (this.y + this.height + this.vy <= canvas.height) {
+            this.vy += byValue
+          }
+        }
+
+        motion() {
+          
+          let moves = [
+            integersBetween(-40, 40, true),
+            integersBetween(-40, 40, true),
+            integersBetween(-10, 10, true),
+            integersBetween(-10, 10, true)
+          ]
+
+          let choice = moves[integersBetween(0, moves.length - 1)]
+
+          if (choice === moves[0]) {
+            this.x += moves[0] * 0.1 
+          } else if (choice === moves[1]) {
+            this.x -= moves[1] * 0.1
+          } else if (choice === moves[2]) {
+            this.y += moves[2] * 0.1
+          } else if (choice === moves[3]) {
+            this.y -= moves[3] * 0.1
+          } 
+
+          /* this.whereY += Math.random() * 5
+          if (this.whereY > canvas.height) {
+            this.whereY = -100
+          } */
+        }
+
+        draw() {
+          ctx.drawImage(
+            this.image,
+            this.widthList[this.frameCounter],
+            this.fixedHeight,
+            this.widthList2[this.frameCounter],
+            this.srcHeight,
+            this.x,
+            this.y,
+            this.width,
+            this.height
+          )
+        }
+
+        frameAdmin() {
+          this.modularCounter++
+
+          if (this.modularCounter % this.modular === 0) {
+            if (this.frameCounter < this.frameAmount) {
+              this.frameCounter++
+            } else {
+              this.frameCounter = 0
+            }
+          }
+        }
+      }
+
+      // <test>
+      class TestHill {
+        constructor({ image, x, y, width, height }) {
+          this.image = image
+          this.x = x
+          this.y = y
+          this.width = width
+          this.height = height
+          this.newX = undefined
+          this.newY = undefined
+        }
+
+        draw() {
+          /* ctx.beginPath()
+                ctx.fillStyle = 'white'
+                ctx.fillRect(this.x, this.y, this.width, this.height)
+                ctx.fill() */
+          ctx.drawImage(this.image, this.x, this.y, this.width, this.height)
+        }
+
+        move() {
+          let delay = 0
+          let newDelay = Math.floor(Math.random() * (200 - 100) + 100)
+
+          // A cada 100 até 200 frames: mudar a posição em x e y
+          if (delay % newDelay === 0) {
+            this.newX = Math.random() * (canvas.width - this.width)
+            this.newY = Math.random() * (canvas.height - this.height)
+          }
+
+          let dx = this.x - this.newX
+          let dy = this.y - this.newY
+
+          // Mover de forma homogênia (a divisão torna a transição muito menos devagar)
+          this.x -= dx / (newDelay * 2)
+          this.y -= dy / (newDelay * 2)
+        }
+      }
+
+      // JOGADOR
+      let wolf = new Image()
+      let wolfIdleLeft = new Image()
+      let wolfWalkRight = new Image()
+      let wolfWalkLeft = new Image()
+      let wolfSpin = new Image()
+      let wolfJumpRight = new Image()
+      let wolfJumpRightEdited = new Image()
+
+      wolf.src = './assets/players/wolf_idle_right_tr.png'
+      wolfIdleLeft.src = './assets/players/wolf_idle_left_tr.png'
+      wolfWalkRight.src = './assets/players/wolf_walk_right_tr.png'
+      wolfWalkLeft.src = './assets/players/wolf_walk_left_tr.png'
+      wolfSpin.src = './assets/players/spin_rainbow_tr.png'
+      wolfJumpRight.src = './assets/players/wolf_jump_right_tr.png'
+      wolfJumpRightEdited.src = './assets/players/wolf_jump_right_edited_tr.png'
+
+      // INTERAÇÕES
+      let greetings = new Image()
+      let ouch = new Image()
+
+      greetings.src = './assets/dialogue/greetings.gif'
+      ouch.src = './assets/dialogue/ouch.gif'
+
+      // INIMIGOS
+      let koopaBlue = new Image()
+      let koopaColorful = new Image()
+      let koopaCyan = new Image()
+      let koopaGolden = new Image()
+      let koopaOrange = new Image()
+      let koopaRed = new Image()
+      let koopaViolet = new Image()
+      let koopaWhiteYellow = new Image()
+
+      koopaBlue.src = './assets/shells/shell_blue_tr.gif'
+      koopaColorful.src = './assets/shells/shell_colorful_tr.gif'
+      koopaCyan.src = './assets/shells/shell_cyan_tr.gif'
+      koopaGolden.src = './assets/shells/shell_golden_tr.gif'
+      koopaOrange.src = './assets/shells/shell_orange_tr.gif'
+      koopaRed.src = './assets/shells/shell_red_tr.gif'
+      koopaViolet.src = './assets/shells/shell_violet_tr.gif'
+      koopaWhiteYellow.src = './assets/shells/shell_white_yellow_tr.gif'
+
+      let koopaShellTypes = [
+        koopaBlue,
+        koopaColorful,
+        koopaCyan,
+        koopaGolden,
+        koopaOrange,
+        koopaRed,
+        koopaViolet,
+        koopaWhiteYellow
+      ]
+
+      // RECURSOS VIZUAIS
+      let backgroundDarkCyan = new Image()
+      let backgroundHills = new Image()
+      backgroundDarkCyan.src = './assets/landscapes/background.png'
+      backgroundHills.src = './assets/landscapes/hills.png'
+
+      // SUPERFÍCIE
+      let surface = new Image()
+      surface.src = './assets//surfaces/mario_world_surface.png'
+
+      // PLATAFORMAS
+      let stonePlatform10 = new Image()
+      let stonePlatform9 = new Image()
+      let stonePlatform8 = new Image()
+      let stonePlatform7 = new Image()
+      let stonePlatform6 = new Image()
+      let stonePlatform5 = new Image()
+      let stonePlatform4 = new Image()
+      stonePlatform10.src = './assets/platforms/stone_platform10_tr.gif'
+      stonePlatform9.src = './assets/platforms/stone_platform9_tr.gif'
+      stonePlatform8.src = './assets/platforms/stone_platform8_tr.gif'
+      stonePlatform7.src = './assets/platforms/stone_platform7_tr.gif'
+      stonePlatform6.src = './assets/platforms/stone_platform6_tr.gif'
+      stonePlatform5.src = './assets/platforms/stone_platform5_tr.gif'
+      stonePlatform4.src = './assets/platforms/stone_platform4_tr.gif'
+      
+      let platformTypes = [
+        stonePlatform10,
+        stonePlatform9,
+        stonePlatform8,
+        stonePlatform7,
+        stonePlatform6,
+        stonePlatform5,
+        stonePlatform4
+      ]
+
+      // OBSTÁCULOS
+      let purplePipe = new Image()
+      let hillSmall = new Image()
+      let brick = new Image()
+      purplePipe.src = './assets/obstacles/purple_pipe_tr.png'
+      hillSmall.src = './assets/obstacles/hill_small_tr.png'
+      brick.src = './assets/platforms/happy_brick_tr.gif'
+
+      // <test>
+      let hillBig = new Image()
+      hillBig.src = './assets/hill_large_tr.png'
+      let testHill = []
+
+      // CONFIGURAÇÃO DO JOGADOR (ALTERA VALORES EM "charWolf")
+      let wolfSetup = {
+        idleRight: {
+          widthList: [0, 184, 365, 542, 715, 892, 1074],
+          widthList2: [183, 183, 177, 171, 174, 180, 185],
+          srcHeight: 175,
+          frameAmount: 6
+        },
+
+        idleLeft: {
+          widthList: [0, 185, 367, 544, 717, 894, 1074],
+          widthList2: [187, 183, 177, 173, 177, 181, 185],
+          srcHeight: 175,
+          frameAmount: 6
+        },
+
+        walkRight: {
+          widthList: [0, 172, 350, 510, 685, 860, 1033, 1205.7, 1380],
+          widthList2: [171, 169, 160, 175, 175, 175, 175, 175, 175],
+          srcHeight: 161,
+          frameAmount: 8
+        },
+
+        // INVERTER O SPRITE DA DIREITA NO PAINT + INVERTER A ORDEM DOS FRAMES (CORRIGIR MOVIMENTO INVERSO)
+        walkLeft: {
+          // widthList: [0, 172, 344, 515, 690, 865, 1037, 1208, 1380],
+          widthList: [1380, 1208, 1037, 865, 690, 515, 344, 172, 0],
+          // widthList2: [171, 169, 174, 175, 175, 175, 172, 172, 172],
+          widthList2: [172, 172, 172, 175, 175, 175, 174, 169, 171],
+          srcHeight: 161,
+          frameAmount: 8
+        },
+
+        jumpRight: {
+          widthList: [0, 189, 378, 567, 755, 945, 1135],
+          widthList2: [189, 189, 189, 189, 189, 189, 189],
+          srcHeight: 188,
+          frameAmount: 6
+        },
+
+        jumpRightEdited: {
+          widthList: [0, 178, 355, 531, 709, 886, 1064, 1242],
+          widthList2: [178, 178, 178, 178, 178, 178, 178, 178],
+          srcHeight: 176,
+          frameAmount: 7
+        },
+
+        spin: {
+          widthList: [0, 191, 375, 563, 754, 940, 1126],
+          widthList2: [191, 186, 186, 186, 186, 186, 193],
+          srcHeight: 189,
+          frameAmount: 6
+        }
+      }
+
+      // VARS A RECEBEREM CONTEÚDOS EM "init()"
+      let charWolf = undefined
+      let enemies = []
+      let landscapes = []
+      let surfaces = []
+      let platforms = []
+      let pipes = []
+      let hills = []
+      let bricks = []
+
+      // FUNÇÃO PARA GERENCIAR: "Player.fail()"
+      function lifeManager() {
+        if (lives === 0) {
+          ctx.fillStyle = 'rgba(255,255,255)'
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+          ctx.fillStyle = 'blue'
+          ctx.font = '100px georgia'
+          ctx.fillText('GAME OVER', 100, 100)
+          ctx.fill()
+        } else {
+          ctx.fillStyle = 'cyan'
+          ctx.font = '25px georgia'
+          ctx.fillText('Vidas: ' + lives, 50, 50)
+        }
+      }
+
+      // GERENCIADOR DANO NO PERSONAGEM
+      function healthManager() {
+        if (hit >= 15) {
+          health -= 1
+          hit = 0
+        }
+
+        if (health === 0) {
+          
+          lives -= 1
+          health = 100
+          init()
+
+        } else {
+          
+          ctx.fillStyle = 'cyan'
+          ctx.font = '25px georgia'
+          ctx.fillText('Saúde: ' + health + '%', 50, 100)
+        }
+      }
+
+      function dataWipe() {
+        // <test>
+        testHill = []
+
+        enemies = []
+        landscapes = []
+        surfaces = []
+        platforms = []
+        pipes = []
+        hills = []
+        bricks = []
+      }
+
+      function charWolfSetup() {
+        // Sobre a lista 1: No paint, é possível obter as coordenadas com o ponteiro em cada extremidade da imagem
+        // Posição Y: altura do canvas Y - altura do sprite - altura da superfície
+        charWolf = new Player({
+          image: wolf,
+          widthList: wolfSetup.idleRight.widthList,
+          frameCounter: 0,
+          fixedHeight: 0,
+          widthList2: wolfSetup.idleRight.widthList2,
+          srcHeight: wolfSetup.idleRight.srcHeight,
+          whereX: 100,
+          whereY: canvas.height - 70 - 61,
+          canvasWidth: 70,
+          canvasHeight: 70,
+          modularCounter: 0,
+          modular: 5,
+          frameAmount: wolfSetup.idleRight.frameAmount
+        })
+      }
+
+      function enemySetup() {
+        // PRIMEIRO CASCO
+        enemies.push(
+          new Foe({
+            image: koopaShellTypes[integersBetween(0, koopaShellTypes.length - 1)],
+            widthList: [0, 17.5, 34.5, 51.5],
+            frameCounter: 0,
+            fixedHeight: 0,
+            widthList2: [16, 17.5, 17, 17],
+            srcHeight: 16,
+            x: integersBetween(700, 1000),
+            y: 535,
+            width: 32,
+            height: 32,
+            modularCounter: 0,
+            modular: 10,
+            frameAmount: 3
+          })
+        )
+
+        // CASCOS SECUNDÁRIOS
+        for (let i = 1; i < 50; i++) {
+          enemies.push(
+            new Foe({
+              image:
+                koopaShellTypes[integersBetween(0, koopaShellTypes.length - 1)],
+              widthList: [0, 17.5, 34.5, 51.5],
+              frameCounter: 0,
+              fixedHeight: 0,
+              widthList2: [16, 17.5, 17, 17],
+              srcHeight: 16,
+              x: enemies[i - 1].x + integersBetween(20, 700),
+              y: 535,
+              width: 32,
+              height: 32,
+              modularCounter: 0,
+              modular: 10,
+              frameAmount: 3
+            })
+          )
+        }
+      }
+      
+      function landscapeSetup() {
+        // PLANO DE FUNDO: GENÉRICO
+        landscapes.push(
+          new Landscape({
+            image: backgroundDarkCyan,
+            x: 0,
+            y: 0,
+            width: 11643,
+            height: 732
+          })
+        )
+
+        // PLANO DE FUNDO: PLANÍCIES
+        landscapes.push(
+          new Landscape({
+            image: backgroundHills,
+            x: 0,
+            y: 0,
+            width: 7545,
+            height: 592
+          })
+        )
+      }
+
+      function surfaceSetup() {
+        // SUPERFÍCIE PRIMÁRIA (posição x usada como base nas secundárias)
+        surfaces.push(
+          new Platform({
+            image: surface,
+            x: 0,
+            y: 565,
+            width: 499,
+            height: 61
+          })
+        )
+
+        // SUPERFÍCIES SECUNDÁRIAS (usam o valor base + um valor de distanciamento definido por "Math.random()")
+        // +499 = tamanho da plataforma (somada ao valor abaixo, para criar uma lacuna)
+        // +72  = referente ao tamanho do personagem
+        for (let i = 1; i <= 50; i++) {
+          let newSurface = new Platform({
+            image: surface,
+            x: surfaces[i - 1].x + integersBetween(499 + 80, 499 + 140, true),
+            y: 565,
+            width: 499,
+            height: 61
+          })
+          surfaces.push(newSurface)
+        }
+      }
+
+      function platformSetup() {
+        // PLATAFORMA PRIMÁRIA
+        platforms.push(
+          new Platform({
+            image: platformTypes[integersBetween(0, 6)],
+            x: integersBetween(700, 1100, true),
+            y: integersBetween(250, 350, true),
+            width: 200,
+            height: 30
+          })
+        )
+
+        // PLATAFORMAS SECUNDÁRIAS
+        for (let i = 1; i <= 50; i++) {
+          let newPlatform = new Platform({
+            image: platformTypes[integersBetween(0, 6)],
+            x: platforms[i - 1].x + integersBetween(700, 1200),
+            y: integersBetween(250, 350, true),
+            width: 200,
+            height: 30
+          })
+          platforms.push(newPlatform)
+        }
+      }
+
+      function objectSetup() {
+        // CANO PRIMÁRIO
+        pipes.push(
+          new Platform({
+            image: purplePipe,
+            x: integersBetween(700, 1000, true),
+            y: integersBetween(500, 520, true),
+            width: 44,
+            height: 64
+          })
+        )
+
+        // CANOS SECUNDÁRIOS
+        for (let i = 1; i <= 50; i++) {
+          let newPipe = new Platform({
+            image: purplePipe,
+            x: pipes[i - 1].x + integersBetween(700, 1000, true),
+            y: integersBetween(500, 520, true),
+            width: 44,
+            height: 64
+          })
+          pipes.push(newPipe)
+        }
+
+        // COLINA PEQUENA
+        hills.push(
+          new Platform({
+            image: hillSmall,
+            x: integersBetween(300, 700, true),
+            y: integersBetween(445, 470, true),
+            width: 64 * integersBetween(2, 4, true),
+            height: 49 * integersBetween(2.7, 3.3, true)
+          })
+        )
+
+        // COLINAS PEQUENAS SECUNDÁRIAS
+        for (let i = 1; i <= 50; i++) {
+          let newSmallHill = new Platform({
+            image: hillSmall,
+            x: hills[i - 1].x + integersBetween(700, 1400, true),
+            y: integersBetween(445, 470, true),
+            width: 64 * integersBetween(2, 4, true),
+            height: 49 * integersBetween(2.7, 4, true)
+          })
+          hills.push(newSmallHill)
+        }
+
+        // TIJOLO
+        bricks.push(
+          new Platform({
+            image: brick,
+            x: integersBetween(100, 1100),
+            y: integersBetween(200, 300),
+            width: 32,
+            hbrickseight: 34
+          })
+        )
+
+        // TIJOLOS SECUNDÁRIOS
+        for (let i = 1; i <= 50; i++) {
+          let newBrick = new Platform({
+            image: brick,
+            x: bricks[i - 1].x + integersBetween(500, 1000),
+            y: integersBetween(200, 300),
+            width: 32,
+            height: 34
+          })
+          bricks.push(newBrick)
+        }
+
+        // <test>
+        testHill.push(
+          new TestHill({
+            image: hillBig,
+            x: 200,
+            y: 399,
+            width: 257 * 3,
+            height: 130 * 2
+          })
+        )
+      }
+
+      // FUNÇÃO PARA INSERÇÃO DE CONTEÚDO AO CANVAS #init
+      function init() {
+        dataWipe()
+        charWolfSetup()
+        enemySetup()
+        landscapeSetup()
+        surfaceSetup()
+        platformSetup()
+        objectSetup()
+      }
+
+      // RECURSOS DE TESTE DA FUNÇÃO TESTE DE CRIAÇÃO DE SPRITES "wolfDraw()"
+      let testSprite = new Image()
+      testSprite.src = './assets/players/teste.png'
+      let test2 = [0, 184, 365, 542, 715, 892, 1074]
+      let test3 = [172, 183, 177, 171, 174, 180, 185]
+      let wolfModularCounter = 0
+      let wolfModular = 10
+      let wolfFrameCounter = 0
+      let wolfFrameAmount = 3
+
+      // FUNÇÃO DE DEMONSTRAÇÃO PARA CRIAR SPRITES (usar em "animate()")
+      function wolfDraw(img, eachHorizontalEdgeArray, fixedValue, horizontalDistanceArray, sourceHeight, onCanvasX, onCanvasY, canvasWidth, canvasHeight) {
+        ctx.drawImage(
+          img,
+          eachHorizontalEdgeArray[wolfFrameCounter],
+          fixedValue,
+          horizontalDistanceArray[wolfFrameCounter],
+          sourceHeight,
+          onCanvasX,
+          onCanvasY,
+          canvasWidth,
+          canvasHeight
+        )
+        
+        /*
+        wolfModularCounter++
+        if (wolfModularCounter % wolfModular === 0) {
+          if (wolfFrameCounter < wolfFrameAmount) {
+            wolfFrameCounter++
+          } else {
+            wolfFrameCounter = 0
+          }
+        }
+        */
+      }
+      
+      function canvasEnvironment(content, contentBox) {
+        if (content === 'landscape') {
+          contentBox.forEach(landscape => {
+            landscape.draw()
+          })
+        } else if (content === 'platform') {
+          contentBox.forEach(platform => {
+            platform.draw()
+          })
+        } else if (content === 'hill') {
+          contentBox.forEach(hill => {
+            hill.draw()
+          })
+        } else if (content === 'pipe') {
+          contentBox.forEach(pipe => {
+            pipe.draw()
+          })
+        } else if (content === 'brick') {
+          contentBox.forEach(brick => {
+            brick.draw()
+          })
+        } else if (content === 'surface') {
+          contentBox.forEach(surface => {
+            surface.draw()
+          })
+        } else if (content === 'enemy') {
+          contentBox.forEach(enemy => {
+            enemy.draw()
+            enemy.frameAdmin()
+            enemy.motion()
+            // enemy.move()
+            // enemy.fallDown((byValue = 1))
+          })
+        }
+      }
+
+      function playerTools(reference) {
+        reference.draw()
+        reference.frameAdmin()
+        reference.move()
+        // charWolf.gravity((byValue = 1)) // Caso o jogador não precise cair
+        reference.fallDown((byValue = 1))
+        reference.horizontalSetup((speed = 2.5))
+        reference.fail()
+        reference.verticalControl()
+      }
+
+      function playerTalk(reference) {
+        reference.say()
+        reference.hit()
+      }
+      
+      function interaction(reference, against) {
+        if (against === 'landscape') {
+          reference.landscapeMotion(landscapes,3 * 0.66)
+        } else if (against === 'platform') {
+          reference.landscapeMotion(platforms, 5)
+          reference.collisionBottom(platforms)
+          reference.collisionHorizontal(platforms, 3)
+        } else if (against === 'hill') {
+          reference.landscapeMotion(hills, 5)
+          reference.collisionBottom(hills)
+          reference.collisionHorizontal(hills, 3)
+        } else if (against === 'purple_pipe') {
+          reference.landscapeMotion(pipes, 5)
+          reference.collisionBottom(pipes)
+          reference.collisionHorizontal(pipes, 3)
+        } else if (against === 'surface') {
+          reference.landscapeMotion(surfaces, 5)
+          reference.collisionBottom(surfaces)
+          // reference.collisionHorizontal((obstacle = surfaces), (reboundBy = 10))
+        } else if (against === 'bricks') {
+          reference.landscapeMotion(bricks, 5)
+          reference.collisionBottom(bricks)
+          reference.collisionHorizontal(bricks, 3)
+        } else if (against === 'enemy') {
+          reference.landscapeMotion(enemies, 5)
+          reference.collisionBottom(enemies)
+          reference.collisionHorizontal(enemies, 3)
+        } else if (against === 'freeze_scenario_at_end_left') {
+          reference.landscapeMotion(landscapes, -3 * 0.66)
+          reference.landscapeMotion(platforms, -5)
+          reference.landscapeMotion(hills, -5)
+          reference.landscapeMotion(pipes, -5)
+          reference.landscapeMotion(surfaces, -5)
+          reference.landscapeMotion(bricks, -5)
+          reference.landscapeMotion(enemies, -5)
+        }
+      }
+
+      // FUNÇÃO PARA ATUALIZAR VALORES = ANIMAR CONTEÚDOS DO CANVAS #animate
+      function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+        canvasEnvironment('landscape', landscapes) // landscapeSetup()
+        canvasEnvironment('platform', platforms)   // platformSetup()
+        canvasEnvironment('hill', hills)           // objectSetup()
+        canvasEnvironment('pipe', pipes)           // objectSetup()
+        canvasEnvironment('brick', bricks)         // objectSetup()
+        canvasEnvironment('surface', surfaces)     // surfaceSetup()
+        canvasEnvironment('enemy', enemies)        // enemySetup()
+        // console.log(landscapes[0].x)
+
+        // <test>
+        // testHill.forEach(index => {
+        //   index.draw()
+        // })
+
+        /* TUTORIAL SOBRE SPRITES
+        
+        PROPRIEDADES ORDENADAS DA FUNÇÃO "drawImage()"
+            this.image       this.widthList[this.frameCounter]    this.fixedHeight    this.widthList2[this.frameCounter] 
+            this.srcHeight   this.whereX                          this.whereY         this.canvasWidth
+            this.canvasHeight
+
+        PADRÃO DE ANÁLISE (no paint)
+            Abrir a imagem e aumentar o zoom
+            Encontrar cada uma das coordenadas x do sprite
+            As coordenadas seguem a ordem: ponta da imagem 1 (->) até a ponta da penúltima imagem (->)
+        
+        PARÂMETROS IMPORTANTES
+            Para que os sprites renderizem corretamente, é preciso suas coordenadas corretas
+            As coordenadas da lista 1 são encontradas seguindo o passo anterior
+            As coordenadas da lista 2 são encontradas por tentativa e erro da imagem desenhada no CANVAS
+            Na função "drawImage()" os índices dessas duas listas serão relacionados para renderizar o sprite
+
+        EXEMPLOS DE LISTA
+            [0, 17.5, 34.5, 51.5]
+            [16, 17.5, 17, 17]
+
+        FUNÇÃO A SER INSERIDA PARA DESCOBRIR "x" da lista 2
+            ctx.drawImage(wolfWalkRight, 1380, 0, 175, 161, 400, 100, 300, 300)
+        */
+        
+        // ctx.drawImage(testSprite, 572, 0, 207, 175, 400, 100, 300, 300)
+        // let listFirst = [0, 172, 367, 572]
+        // let listSecond = [172, 194, 204, 207]
+        
+        lifeManager()
+        healthManager()
+
+        playerTools(charWolf)
+        playerTalk(charWolf)
+        
+        interaction(charWolf, 'landscape')
+        interaction(charWolf, 'platform')
+        interaction(charWolf, 'hill')
+        interaction(charWolf, 'purple_pipe')
+        interaction(charWolf, 'surface')
+        interaction(charWolf, 'bricks')
+        interaction(charWolf, 'enemy')
+
+        // <test>
+        // charWolf.landscapeMotion((obstacle = testHill), (byValue = 5))
+        // charWolf.collisionBottomCustom((obstacle = testHill), (xCustom = -100))
+
+        let scanEdge = charWolf.findEdgeLeft((reference = landscapes[0]))
+        // console.log(scanEdge)
+
+        // NÃO É PARTE DA FUNÇÃO
+        const text = document.getElementsByClassName('text-danger')
+        text[0].innerHTML = scanEdge
+        
+        if (scanEdge) {
+          interaction(charWolf, 'freeze_scenario_at_end_left')
+        }
+
+        requestAnimationFrame(animate)
+      }
+
+      init()
+      animate()
+      
+      // BLA
+      addEventListener('keydown', event => {
+        switch (event.key) {
+          case 'w':
+            // [-= é usado pois há gravidade garantindo a queda]
+            // keys.up.pressed = true
+            // player.vy -= 20
+            charWolf.posture(wolfSpin, wolfSetup, 'jump')
+            charWolf.vy -= 20
+
+            if (charWolf.vy > -20) {
+              charWolf.vy = 0
+            }
+            break
+          case 'q':
+            // [-= é usado pois há gravidade garantindo a queda]
+            // keys.up.pressed = true
+            // player.vy -= 20
+            charWolf.posture(wolfSpin, wolfSetup, 'jump')
+            charWolf.vy -= 15
+
+            if (charWolf.vy > -15) {
+              charWolf.vy = 0
+            }
+            break
+          case 'd':
+            // [+= não é usado p/ não add + velocidade se segurar]
+            // player.vx = 5
+            keys.right.pressed = true
+            charWolf.posture(wolfWalkRight, wolfSetup, 'walk_right')
+            break
+          case 'a':
+            keys.left.pressed = true
+            charWolf.posture(wolfWalkLeft, wolfSetup, 'walk_left')
+            break
+          case '1':
+            keys.greetings.pressed = true
+            break
+        }
+      })
+
+      addEventListener('keyup', event => {
+        switch (event.key) {
+          case 'd':
+            keys.right.pressed = false
+            charWolf.posture(wolf, wolfSetup, 'idle_right')
+            // player.vx = 0
+            break
+          case 'a':
+            keys.left.pressed = false
+            charWolf.posture(wolfIdleLeft, wolfSetup, 'idle_left')
+            break
+          case '1':
+            keys.greetings.pressed = false
+            break
+        }
+      })
+      
+    </script>
+    <script>
+      document.body.style.backgroundColor = '#222'
+      document.getElementsByClassName('text-danger')[0].style.fontSize = '1.5rem'
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-pprn3073KE6tl6bjs2QrFaJGz5/SUsLqktiwsUTF55Jfv3qYSDhgCecCxMW52nD2" crossorigin="anonymous"></script>
+  </body>
+</html>

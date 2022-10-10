@@ -1,0 +1,110 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title></title>
+</head>
+<body>
+  <script>
+
+    function animate() {
+      ctx.fillStyle = '#222'
+      ctx.fillRect(0, 0, innerWidth, innerHeight)
+      
+      // #E & #F: Jogador desenhado no canvas + controle de sprites
+      player.draw()
+      player.frameAdmin()
+      
+      requestAnimationFrame(animate)
+    }
+    
+    class Player {
+      constructor() {
+        // #A: Explicação de como o método "draw" funciona com todos seus parâmetros
+        this.tutorial = {
+          'par_1': 'Imagem atual do jogador carregada no canvas',
+          'par_2': `
+            FONTE: C:\Users\lucasf\Downloads\projetos\IMPORTANTE_SOBRE_JOGOS
+            Captura da posição x de cada imagem do sprite
+            Pela lógica, a captura dessas posições começa na parte <- da primeira imagem até a <- da última imagem
+            A quantidade de índices equivale a quantidade de imagens
+            EX: [0, 184, 365, 542, 715, 892, 1074] significa que esse sprite têm 7 imagens
+          `,
+          'par_2[i]': 'Índice que representa a imagem atual do sprite do jogador (muda em "frameAdmin")',
+          'par_3': 'Posição Y onde acontece o recorte no sprite de imagens (pelo bom senso, tende a ser sempre zero)',
+          'par_4': `
+            FONTE: C:\Users\lucasf\Downloads\projetos\IMPORTANTE_SOBRE_JOGOS
+            Cálculo da distância da posição x (subtração) de cada imagem do sprite (i2 - i1, i3 - i2, i4 - i3...etc)
+            Uma forma de explicar isso é usando o valor de exemplo citado acima: [0, 184, 365, 542, 715, 892, 1074]
+            Os índices deste array são a subtração do índice posterior pelo anterior no exemplo, mas não é 100% preciso
+          `,
+          'par_5': 'Altura original da imagem',
+          'par_6': 'Inserção do jogador no X do canvas',
+          'par_7': 'Inserção do jogador no Y do canvas',
+          'par_8': 'Largura opcional p/ o jogador no canvas',
+          'par_9': 'Altura opcional p/ o jogador no canvas',
+        }
+      
+        // #B: Criação dos atributos p/ poder desenhar o jogador em "draw" (parâmetros em ordem exata do método)
+        // O sprite inicial é o jogador p/ -> (idleRight)
+        this.image = wolf                                                      // par_1
+        this.widthList = this.wolfSetup.idleRight.widthList                    // par_2  
+        this.frameCounter = 0                                                  // par_2[i] & par4[i]
+        this.fixedHeight = 0                                                   // par_3
+        this.widthList2 = this.wolfSetup.idleRight.widthList2                  // par_4
+        this.srcHeight = this.wolfSetup.idleRight.srcHeight                    // par_5
+        this.whereX = 100                                                      // par_6
+        this.whereY = canvas.height - (this.playerHeight + this.surfaceHeight) // par_7
+        this.canvasWidth = 60                                                  // par_8
+        this.canvasHeight = 60                                                 // par_9
+
+        // #C: Atributos usados no função "frameAdmin", que auxilia na transição de sprites. São eles:
+        // [Contador que ++ constantemente, Gatilho p/ transição da 1 imagem p/ outra, Qtd. de imagens no sprite]
+        // Quanto maior o valor de "this.modular": + lenta a transição de sprites
+        // O último atributo muda conforme a tecla de movimento que é pressionada (muda grupo de sprites)
+        this.modularCounter = 0                                                
+        this.modular = 5                                                        
+        this.frameAmount = this.wolfSetup.idleRight.frameAmount
+      }
+      
+      // #E: Desenho da imagem do jogador no canvas
+      draw() {
+        ctx.drawImage(
+          this.image,
+          this.widthList[this.frameCounter],
+          this.fixedHeight,
+          this.widthList2[this.frameCounter],
+          this.srcHeight,
+          this.whereX,
+          this.whereY,
+          this.canvasWidth,
+          this.canvasHeight
+        )
+      }
+
+      // #F: Controle de velocidade da transição de sprites do jogador
+      frameAdmin() {
+        this.modularCounter++
+
+        if (this.modularCounter % this.modular === 0) {
+          if (this.frameCounter < this.frameAmount) {
+            this.frameCounter++
+          } else {
+            this.frameCounter = 0
+          }
+        }
+      }
+    }
+
+    // #D 
+    let player = new Player()
+
+    animate()
+
+  </script>
+</body>
+</html>
