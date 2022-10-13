@@ -5,9 +5,9 @@ Simular uma fase de jogo 2d com os recursos mais comuns: imagens de fundo, sobre
 <ol>
   <li>O jogo usa a tag canvas, mas é majoritariamente feito em javascript</li>
   <li>Em "js/game_mechanics.js" temos todo o código do jogo</li>
-  <li>O progresso de desenvolvimento do código é documentado com hastags</li>
-  <li>A hashtag inicialmente começa com <b># a_a</b> até <b># t_d</b></li>
-  <li>A letra da hastag avança conforme um novo procedimento é iniciado</li>
+  <li>O progresso de desenvolvimento do código é documentado com siglas</li>
+  <li>A sigla inicialmente começa com <b>a_a</b> até <b>t_d</b></li>
+  <li>A primeira letra da sigla avança conforme um novo procedimento é iniciado</li>
 </ol>
 
 # canvas_js_simulacao_jogo_lobo (English)
@@ -17,7 +17,7 @@ Simulate a 2D game scenario with the most common resources: backgrounds, images 
 <ol>
   <li>The game uses the canvas tag, but it is mainly done in javascript</li>
   <li>On "js/game_mechanics.js", there is the entire game code</li>
-  <li>The code development progress is documented by hashtags</li>
-  <li>The hashtag initially starts with <b># a_a</b> until <b># t_d</b></li>
-  <li>The hashtag character advances as a new procedure takes place</li>
+  <li>The code development progress is documented by initials</li>
+  <li>The initials starts with <b>a_a</b> until <b>t_d</b></li>
+  <li>The first character of the initial advances as a new procedure takes place</li>
 </ol>
